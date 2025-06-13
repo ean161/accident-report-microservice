@@ -2,13 +2,13 @@ import axios from "axios";
 import { WebSocketServer } from "ws";
 import { Zalo, ThreadType, Urgency, TextStyle } from "zca-js";
 
-async function getLocation(ip = "113.178.136.50") {
+async function getLocation(ip = "") {
     if (ip == "ERROR")
         return ip;
 
     try {
         const response = await axios.get(`https://freeipapi.com/api/json/${ip}`);
-        return response.data.regionName;
+        return response.data.regionName + ", " + response.data.countryName;
     } catch (error) {
         console.error("Error fetching location:", error.message);
     }
@@ -34,7 +34,6 @@ async function main() {
 
     var state = 0;
     var ledState = 0;
-    var buzzerState = 0;
     var thresholdLevel = 18;
     var location = "";
 
@@ -62,7 +61,6 @@ async function main() {
                 case "MOBILE_DEVICE_CONNECTED":
                     socket.send("SYNC_STATE|" + state);
                     socket.send("SYNC_LED|" + ledState);
-                    socket.send("SYNC_BUZZER|" + buzzerState);
                     socket.send("SYNC_THRESHOLD_LEVEL|" + thresholdLevel);
                     socket.send("SYNC_LOCATION|" + location);
                     break;
@@ -72,20 +70,15 @@ async function main() {
                 case "OFF_LED":
                     ledState = 0;
                     break;
-                case "ON_SOUND":
-                    buzzerState = 1;
-                    break;
-                case "OFF_SOUND":
-                    buzzerState = 0;
-                    break;
                 case "THRESHOLD":
                     if (now - lastSentTime[message] >= RATE_LIMIT_MS && state == 1) {
-                        notification = "Phương tiện đã bị va chạm mạnh";
+                        notification = `Phương tiện đã bị va chạm mạnh ${(location != undefined && location != "" && location != "ERROR") ? `tại khu vực ${location}` : ""}`;
                         lastSentTime[message] = now;
 
                         socketServer.clients.forEach((client) => {
                             if (client.readyState === WebSocket.OPEN) {
                                 client.send("VEHICLE_COLLISION");
+                                client.send("BING_SOUND");
                                 // client.send("ON_SOUND");
                             }
                         });
@@ -103,7 +96,11 @@ async function main() {
                             case "CIRCUIT_IP":
                                 location = await getLocation(args[1]);
                                 if (location != undefined && location != "" && location != "ERROR")
-                                    socket.send("SYNC_LOCATION|" + location);
+                                    socketServer.clients.forEach((client) => {
+                                        if (client !== socket && client.readyState === client.OPEN) {
+                                            client.send("SYNC_LOCATION|" + location);
+                                        }
+                                    });
                                 break;
                             default:
                                 break;
