@@ -1,4 +1,5 @@
 import axios from "axios";
+import http from "http";
 import { WebSocketServer } from "ws";
 import { Zalo, ThreadType, Urgency, TextStyle } from "zca-js";
 
@@ -26,7 +27,23 @@ async function main() {
     const familyThreadID = "3682819023050305764";
     zaloClient.listener.start();
 
-    const socketServer = new WebSocketServer({ port: 8070 });
+    const server = http.createServer((req, res) => {
+    if (req.url === "/") {
+            socketServer.clients.forEach((client) => {
+                if (client.readyState === client.OPEN) {
+                    client.send("FIND_VEHICLE");
+                }
+            });
+
+            res.writeHead(200, { "Content-Type": "text/plain" });
+            res.end("Finding vehicle");
+        } else {
+            res.writeHead(404, { "Content-Type": "text/plain" });
+            res.end("Not found");
+        }
+    });
+
+    const socketServer = new WebSocketServer({ server });
 
     const lastSentTime = {
         "THRESHOLD": 0
@@ -136,6 +153,10 @@ async function main() {
                 }
             });
         });
+    });
+
+    server.listen(8070, () => {
+        console.log("Server listening on port 8070");
     });
 }
 
